@@ -1,0 +1,16 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/解决方案项/">
+    <File Path=".clang-format" />
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="README.md" />
+  </Folder>
+  <Project Path="modern_vulkan/modern_vulkan.vcxproj" Id="a6eadb8b-f632-4457-94f4-58e8d1f81c8a">
+    <BuildDependency Project="modern_vulkan_library/modern_vulkan_library.vcxproj" />
+  </Project>
+  <Project Path="modern_vulkan_library/modern_vulkan_library.vcxproj" Id="c68eaa23-1e07-45c3-a9d0-2910df84d6c2" />
+</Solution>
