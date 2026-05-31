@@ -12,7 +12,7 @@ struct MODERN_VULKAN_LIBRARY_EXPORT mesh_renderer {
     mesh_renderer(
         logical_device const& logical_device,
         swapchain const& swapchain,
-        mesh_data const& mesh);
+     model_data const& mesh);
     ~mesh_renderer();
 
     mesh_renderer(mesh_renderer&& other) noexcept;

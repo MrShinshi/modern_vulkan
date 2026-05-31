@@ -1,8 +1,7 @@
 ﻿#include <iostream>
+#include <vulkan/model_loader.h>
 #include <vulkan/mesh_renderer.h>
-#include <vulkan/stl_mesh.h>
 #include <vulkan/point_cloud_renderer.h>
-#include <vulkan/stl_point_cloud.h>
 #include <sdl/simple_direct_media_layer.h>
 #include <vulkan/extensions.h>
 #include <vulkan/instance.h>
@@ -15,7 +14,7 @@
 #include <sstream>
 #include <stdexcept>
 
-int main() try {
+int main() {
 	constexpr auto kLeftMouseButton = modern_vulkan::sdl::mouse_button::left;
 	constexpr auto kRightMouseButton = modern_vulkan::sdl::mouse_button::right;
 	enum struct render_mode {
@@ -27,9 +26,9 @@ int main() try {
 	modern_vulkan::sdl::window_properties props(
 		"Hello, Modern Vulkan!",
 		{1280, 720},
-		false);
+		true);
 	props.pos({100, 100});
-	props.resizable(false);
+	props.resizable(true);
 	auto window = sdl_layer.window(props);
 
 	std::vector<modern_vulkan::instance_layer> layers;
@@ -51,22 +50,60 @@ int main() try {
 		surface,
 		modern_vulkan::queue_family_flags::graphics | modern_vulkan::queue_family_flags::present,
 		std::vector<modern_vulkan::device_extension>{modern_vulkan::device_extension::khr_swapchain});
-	modern_vulkan::swapchain swapchain(logical_device, surface, {1280, 720});
+	modern_vulkan::swapchain swapchain(logical_device, surface, window.rect());
 
-	auto const stl_path = std::filesystem::path{LR"(G:\绯英_stls\obj_1_绯英.stl)"};
-	auto const point_cloud = modern_vulkan::load_stl_point_cloud(stl_path, {0.95f, 0.78f, 0.86f});
-	auto const mesh = modern_vulkan::load_stl_mesh(stl_path, {0.95f, 0.78f, 0.86f});
+	// auto const model_path = std::filesystem::path{LR"(G:\绯英_stls\obj_1_绯英.stl)"};
+
+	auto const model_path = std::filesystem::path{LR"(G:\崩坏 星穹铁道 黄泉_带骨骼_带武器_爱给网_aigei_com\黄泉\Untitled.obj)"};
+
+
+	auto const point_cloud = modern_vulkan::load_model(
+		model_path,
+		modern_vulkan::model_representation::point_cloud,
+		{0.95f, 0.78f, 0.86f});
+	auto const mesh = modern_vulkan::load_model(
+		model_path,
+		modern_vulkan::model_representation::mesh,
+		{0.95f, 0.78f, 0.86f});
 	std::cout << "Loaded " << point_cloud.vertices.size() << " unique points from STL." << std::endl;
 	std::cout << "Loaded " << (mesh.vertices.size() / 3) << " triangles from STL." << std::endl;
 	modern_vulkan::point_cloud_renderer point_renderer(logical_device, swapchain, point_cloud);
 	modern_vulkan::mesh_renderer renderer(logical_device, swapchain, mesh);
+	auto recreate_render_targets = [&]() {
+		// try {
+		auto const window_rect = window.rect();
+		if (window_rect.w == 0 || window_rect.h == 0) {
+			return false;
+		}
+		logical_device.wait_idle();
+     auto const old_swapchain_handle = swapchain.handle();
+		swapchain = modern_vulkan::swapchain(logical_device, surface, window_rect, old_swapchain_handle);
+		point_renderer = modern_vulkan::point_cloud_renderer(logical_device, swapchain, point_cloud);
+		renderer = modern_vulkan::mesh_renderer(logical_device, swapchain, mesh);
+		return true;
+		//}
+		// catch (std::exception const&) {
+		//	return false;
+		//}
+	};
 	auto current_mode = render_mode::mesh;
 	auto const title_prefix = std::string("Hello, Modern Vulkan!");
 	auto last_fps_sample_time = std::chrono::steady_clock::now();
 	uint32_t frames_since_last_sample = 0;
 
 	return sdl_layer.execute(
-		[&renderer, &point_renderer, &current_mode, &window, &title_prefix, &last_fps_sample_time, &frames_since_last_sample] {
+		[&renderer, &point_renderer, &current_mode, &window, &swapchain, &recreate_render_targets, &title_prefix, &last_fps_sample_time, &frames_since_last_sample] {
+			auto const current_window_rect = window.rect();
+			auto const current_swapchain_extent = swapchain.extent();
+			if (current_window_rect.w == 0 || current_window_rect.h == 0) {
+				return;
+			}
+			if (current_window_rect.w != current_swapchain_extent.w || current_window_rect.h != current_swapchain_extent.h) {
+				if (!recreate_render_targets()) {
+					return;
+				}
+			}
+
 			if (current_mode == render_mode::mesh) {
 				renderer.draw_frame();
 			} else {
@@ -159,7 +196,4 @@ int main() try {
 					break;
 				} },
 			.gamepad = [](modern_vulkan::sdl::input_event const&) {}});
-}
-catch (std::exception& e) {
-	std::cerr << e.what() << std::endl;
 }

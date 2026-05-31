@@ -3,11 +3,12 @@
 
 #include <vulkan/logical_device.h>
 #include <vulkan/mesh_renderer.h>
+#include <vulkan/model_loader.h>
 #include <vulkan/point_cloud_pipeline.h>
 #include <vulkan/point_cloud_renderer.h>
 #include <vulkan/physical_device.h>
 #include <vulkan/stl_mesh.h>
-#include <vulkan/stl_point_cloud.h>
+#include <vulkan/point_cloud.h>
 
 #include <vulkan/vulkan.hpp>
 
@@ -22,6 +23,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
@@ -31,9 +33,12 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <ranges>
+#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -63,7 +68,7 @@ auto choose_swapchain_present_mode(std::span<int32_t const> present_modes) -> Vk
 }
 
 auto choose_swapchain_extent(swapchain_surface_capabilities const& capabilities, rect requested_extent) -> VkExtent2D {
-	if (capabilities.current_extent_defined) {
+	if (capabilities.current_extent_defined && capabilities.current_extent.w > 0 && capabilities.current_extent.h > 0) {
 		return VkExtent2D{
 			.width = static_cast<uint32_t>(capabilities.current_extent.w),
 			.height = static_cast<uint32_t>(capabilities.current_extent.h)};
@@ -71,11 +76,11 @@ auto choose_swapchain_extent(swapchain_surface_capabilities const& capabilities,
 
 	return VkExtent2D{
 		.width = std::clamp(
-			static_cast<uint32_t>(requested_extent.w),
+			static_cast<uint32_t>(std::max<std::size_t>(requested_extent.w, 1)),
 			static_cast<uint32_t>(capabilities.min_image_extent.w),
 			static_cast<uint32_t>(capabilities.max_image_extent.w)),
 		.height = std::clamp(
-			static_cast<uint32_t>(requested_extent.h),
+			static_cast<uint32_t>(std::max<std::size_t>(requested_extent.h, 1)),
 			static_cast<uint32_t>(capabilities.min_image_extent.h),
 			static_cast<uint32_t>(capabilities.max_image_extent.h))};
 }
@@ -130,7 +135,7 @@ auto find_memory_type(VkPhysicalDevice physical_device, uint32_t type_filter, Vk
 } // namespace detail
 
 struct swapchain_private {
-	swapchain_private(logical_device const& logical_device, surface const& surface, rect requested_extent)
+	swapchain_private(logical_device const& logical_device, surface const& surface, rect requested_extent, void *old_swapchain_handle)
 		: logical_device_(static_cast<VkDevice>(logical_device.handle())),
 		  physical_device_(static_cast<VkPhysicalDevice>(logical_device.bound_physical_device().handle())) {
 		if (logical_device_ == VK_NULL_HANDLE) {
@@ -184,7 +189,7 @@ struct swapchain_private {
 			.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
 			.presentMode = present_mode,
 			.clipped = VK_TRUE,
-			.oldSwapchain = VK_NULL_HANDLE};
+			.oldSwapchain = static_cast<VkSwapchainKHR>(old_swapchain_handle)};
 
 		if (queue_family_indices.size() > 1) {
 			create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
@@ -192,8 +197,9 @@ struct swapchain_private {
 			create_info.pQueueFamilyIndices = queue_family_indices.data();
 		}
 
-		if (vkCreateSwapchainKHR(logical_device_, &create_info, nullptr, &swapchain_) != VK_SUCCESS) {
-			throw std::runtime_error("vkCreateSwapchainKHR failed.");
+		auto const create_swapchain_result = vkCreateSwapchainKHR(logical_device_, &create_info, nullptr, &swapchain_);
+		if (create_swapchain_result != VK_SUCCESS) {
+			throw std::runtime_error("vkCreateSwapchainKHR failed with VkResult=" + std::to_string(static_cast<int32_t>(create_swapchain_result)) + ".");
 		}
 
 		uint32_t actual_image_count = 0;
@@ -418,8 +424,8 @@ struct swapchain_private {
 	std::vector<VkFramebuffer> framebuffers_;
 };
 
-swapchain::swapchain(logical_device const& logical_device, surface const& surface, rect extent)
-	: d(new swapchain_private(logical_device, surface, extent)) {
+swapchain::swapchain(logical_device const& logical_device, surface const& surface, rect extent, void *old_swapchain)
+	: d(new swapchain_private(logical_device, surface, extent, old_swapchain)) {
 }
 
 swapchain::~swapchain() {
@@ -799,6 +805,10 @@ struct point_position_key_hash {
 	}
 };
 
+struct accumulated_normal {
+	std::array<float, 3> value{0.0f, 0.0f, 0.0f};
+};
+
 auto make_point_position_key(std::array<float, 3> const& position) -> point_position_key {
 	return point_position_key{
 		.x = std::bit_cast<uint32_t>(position[0]),
@@ -806,15 +816,54 @@ auto make_point_position_key(std::array<float, 3> const& position) -> point_posi
 		.z = std::bit_cast<uint32_t>(position[2])};
 }
 
-void update_bounds(point_cloud_bounds& bounds, std::array<float, 3> const& position) {
+auto normalize_normal(std::array<float, 3> const& normal) -> std::array<float, 3> {
+	auto const length = std::sqrt(
+		normal[0] * normal[0] +
+		normal[1] * normal[1] +
+		normal[2] * normal[2]);
+	if (length <= 1.0e-6f) {
+		return {0.0f, 0.0f, 1.0f};
+	}
+
+	return {
+		normal[0] / length,
+		normal[1] / length,
+		normal[2] / length};
+}
+
+void accumulate_vertex_normal(
+	std::unordered_map<point_position_key, accumulated_normal, point_position_key_hash>& accumulated_normals,
+	std::array<float, 3> const& position,
+	std::array<float, 3> const& normal) {
+	auto& accumulated = accumulated_normals[make_point_position_key(position)].value;
+	auto const normalized_normal = normalize_normal(normal);
+	for (size_t component_index{}; component_index < accumulated.size(); ++component_index) {
+		accumulated[component_index] += normalized_normal[component_index];
+	}
+}
+
+void apply_smoothed_normals(
+	model_data& mesh,
+	std::unordered_map<point_position_key, accumulated_normal, point_position_key_hash> const& accumulated_normals) {
+	for (auto& vertex : mesh.vertices) {
+		auto const normal_iterator = accumulated_normals.find(make_point_position_key(vertex.position));
+		if (normal_iterator == accumulated_normals.end()) {
+			continue;
+		}
+
+		vertex.normal = normalize_normal(normal_iterator->second.value);
+	}
+}
+
+void update_bounds(modern_vulkan::bounds& value_bounds, std::array<float, 3> const& position) {
 	for (size_t component_index{}; component_index < position.size(); ++component_index) {
-		bounds.min[component_index] = std::min(bounds.min[component_index], position[component_index]);
-		bounds.max[component_index] = std::max(bounds.max[component_index], position[component_index]);
+		value_bounds.min[component_index] = std::min(value_bounds.min[component_index], position[component_index]);
+		value_bounds.max[component_index] = std::max(value_bounds.max[component_index], position[component_index]);
 	}
 }
 
 void append_unique_point(
-	point_cloud_data& point_cloud,
+	model_data& point_cloud,
 	std::unordered_set<point_position_key, point_position_key_hash>& unique_positions,
 	std::array<float, 3> const& position,
 	std::array<float, 3> const& color,
@@ -831,7 +880,7 @@ void append_unique_point(
 }
 
 void append_mesh_vertex(
-	mesh_data& mesh,
+	model_data& mesh,
 	std::array<float, 3> const& position,
 	std::array<float, 3> const& color,
 	std::array<float, 3> const& normal) {
@@ -848,8 +897,8 @@ void ensure_read_success(std::istream& stream, std::filesystem::path const& path
 	}
 }
 
-auto default_bounds() -> point_cloud_bounds {
-	return point_cloud_bounds{
+auto default_bounds() -> modern_vulkan::bounds {
+	return modern_vulkan::bounds{
 		.min = {
 			std::numeric_limits<float>::max(),
 			std::numeric_limits<float>::max(),
@@ -877,7 +926,7 @@ auto is_binary_stl(std::filesystem::path const& path) -> bool {
 	return expected_size == static_cast<uint64_t>(file_size);
 }
 
-auto load_binary_stl_point_cloud(std::filesystem::path const& path, std::array<float, 3> const& color) -> point_cloud_data {
+auto load_binary_stl_point_cloud(std::filesystem::path const& path, std::array<float, 3> const& color) -> model_data {
 	std::ifstream stream(path, std::ios::binary);
 	if (!stream.is_open()) {
 		throw std::runtime_error("Failed to open STL file: " + path.string());
@@ -891,7 +940,7 @@ auto load_binary_stl_point_cloud(std::filesystem::path const& path, std::array<f
 	stream.read(reinterpret_cast<char *>(&triangle_count), sizeof(triangle_count));
 	ensure_read_success(stream, path, "Failed to read STL triangle count: ");
 
-	auto point_cloud = point_cloud_data{.bounds = default_bounds()};
+	auto point_cloud = model_data{.bounds = default_bounds()};
 	point_cloud.vertices.reserve(static_cast<size_t>(triangle_count) * 3);
 	std::unordered_set<point_position_key, point_position_key_hash> unique_positions;
 	unique_positions.reserve(static_cast<size_t>(triangle_count) * 3);
@@ -916,7 +965,7 @@ auto load_binary_stl_point_cloud(std::filesystem::path const& path, std::array<f
 	return point_cloud;
 }
 
-auto load_binary_stl_mesh(std::filesystem::path const& path, std::array<float, 3> const& color) -> mesh_data {
+auto load_binary_stl_mesh(std::filesystem::path const& path, std::array<float, 3> const& color) -> model_data {
 	std::ifstream stream(path, std::ios::binary);
 	if (!stream.is_open()) {
 		throw std::runtime_error("Failed to open STL file: " + path.string());
@@ -930,8 +979,10 @@ auto load_binary_stl_mesh(std::filesystem::path const& path, std::array<float, 3
 	stream.read(reinterpret_cast<char *>(&triangle_count), sizeof(triangle_count));
 	ensure_read_success(stream, path, "Failed to read STL triangle count: ");
 
-	auto mesh = mesh_data{.bounds = default_bounds()};
+	auto mesh = model_data{.bounds = default_bounds()};
 	mesh.vertices.reserve(static_cast<size_t>(triangle_count) * 3);
+	std::unordered_map<point_position_key, accumulated_normal, point_position_key_hash> accumulated_normals;
+	accumulated_normals.reserve(static_cast<size_t>(triangle_count) * 3);
 
 	for (uint32_t triangle_index{}; triangle_index < triangle_count; ++triangle_index) {
 		std::array<float, 3> normal{};
@@ -943,6 +994,7 @@ auto load_binary_stl_mesh(std::filesystem::path const& path, std::array<float, 3
 			stream.read(reinterpret_cast<char *>(position.data()), static_cast<std::streamsize>(sizeof(position)));
 			ensure_read_success(stream, path, "Failed to read STL triangle vertex: ");
 			append_mesh_vertex(mesh, position, color, normal);
+			accumulate_vertex_normal(accumulated_normals, position, normal);
 		}
 
 		uint16_t attribute_byte_count{};
@@ -950,16 +1002,18 @@ auto load_binary_stl_mesh(std::filesystem::path const& path, std::array<float, 3
 		ensure_read_success(stream, path, "Failed to read STL triangle attribute byte count: ");
 	}
 
+	apply_smoothed_normals(mesh, accumulated_normals);
+
 	return mesh;
 }
 
-auto load_ascii_stl_point_cloud(std::filesystem::path const& path, std::array<float, 3> const& color) -> point_cloud_data {
+auto load_ascii_stl_point_cloud(std::filesystem::path const& path, std::array<float, 3> const& color) -> model_data {
 	std::ifstream stream(path);
 	if (!stream.is_open()) {
 		throw std::runtime_error("Failed to open STL file: " + path.string());
 	}
 
-	auto point_cloud = point_cloud_data{.bounds = default_bounds()};
+	auto point_cloud = model_data{.bounds = default_bounds()};
 	std::unordered_set<point_position_key, point_position_key_hash> unique_positions;
 	std::string token;
 	std::array<float, 3> current_normal{0.0f, 0.0f, 1.0f};
@@ -985,15 +1039,16 @@ auto load_ascii_stl_point_cloud(std::filesystem::path const& path, std::array<fl
 	return point_cloud;
 }
 
-auto load_ascii_stl_mesh(std::filesystem::path const& path, std::array<float, 3> const& color) -> mesh_data {
+auto load_ascii_stl_mesh(std::filesystem::path const& path, std::array<float, 3> const& color) -> model_data {
 	std::ifstream stream(path);
 	if (!stream.is_open()) {
 		throw std::runtime_error("Failed to open STL file: " + path.string());
 	}
 
-	auto mesh = mesh_data{.bounds = default_bounds()};
+	auto mesh = model_data{.bounds = default_bounds()};
 	std::string token;
 	std::array<float, 3> current_normal{0.0f, 0.0f, 1.0f};
+	std::unordered_map<point_position_key, accumulated_normal, point_position_key_hash> accumulated_normals;
 
 	while (stream >> token) {
 		if (token == "facet") {
@@ -1011,13 +1066,16 @@ auto load_ascii_stl_mesh(std::filesystem::path const& path, std::array<float, 3>
 		stream >> position[0] >> position[1] >> position[2];
 		ensure_read_success(stream, path, "Failed to parse ASCII STL vertex: ");
 		append_mesh_vertex(mesh, position, color, current_normal);
+		accumulate_vertex_normal(accumulated_normals, position, current_normal);
 	}
+
+	apply_smoothed_normals(mesh, accumulated_normals);
 
 	return mesh;
 }
 } // namespace stl_detail
 
-auto load_stl_point_cloud(std::filesystem::path const& path, std::array<float, 3> const& color) -> point_cloud_data {
+auto load_stl_point_cloud(std::filesystem::path const& path, std::array<float, 3> const& color) -> model_data {
 	if (!std::filesystem::exists(path)) {
 		throw std::runtime_error("STL file does not exist: " + path.string());
 	}
@@ -1033,7 +1091,7 @@ auto load_stl_point_cloud(std::filesystem::path const& path, std::array<float, 3
 	return point_cloud;
 }
 
-auto load_stl_mesh(std::filesystem::path const& path, std::array<float, 3> const& color) -> mesh_data {
+auto load_stl_mesh(std::filesystem::path const& path, std::array<float, 3> const& color) -> model_data {
 	if (!std::filesystem::exists(path)) {
 		throw std::runtime_error("STL file does not exist: " + path.string());
 	}
@@ -1047,6 +1105,478 @@ auto load_stl_mesh(std::filesystem::path const& path, std::array<float, 3> const
 	}
 
 	return mesh;
+}
+
+namespace loader_detail
+{
+struct obj_face_vertex {
+	int32_t position_index = 0;
+	int32_t normal_index = 0;
+};
+
+struct obj_triangle {
+	std::array<obj_face_vertex, 3> vertices{};
+	std::array<float, 3> color{0.0f, 0.0f, 0.0f};
+	bool has_color = false;
+};
+
+struct obj_material {
+	std::array<float, 3> diffuse_color{1.0f, 1.0f, 1.0f};
+	bool has_diffuse_color = false;
+};
+
+auto trim_ascii(std::string const& value) -> std::string {
+	auto const first = value.find_first_not_of(" \t\r\n");
+	if (first == std::string::npos) {
+		return {};
+	}
+
+	auto const last = value.find_last_not_of(" \t\r\n");
+	return value.substr(first, last - first + 1);
+}
+
+auto normalize_color_component(float component) -> float {
+	if (component > 1.0f) {
+		return std::clamp(component / 255.0f, 0.0f, 1.0f);
+	}
+
+	return std::clamp(component, 0.0f, 1.0f);
+}
+
+auto normalize_color(std::array<float, 3> color) -> std::array<float, 3> {
+	for (auto& component : color) {
+		component = normalize_color_component(component);
+	}
+
+	return color;
+}
+
+auto parse_obj_material_library(std::filesystem::path const& obj_path, std::string const& library_name) -> std::unordered_map<std::string, obj_material> {
+	auto const material_path = obj_path.parent_path() / trim_ascii(library_name);
+	std::ifstream stream(material_path);
+	if (!stream.is_open()) {
+		return {};
+	}
+
+	std::unordered_map<std::string, obj_material> materials;
+	std::string line;
+	std::string current_material_name;
+
+	while (std::getline(stream, line)) {
+		auto const trimmed = trim_ascii(line);
+		if (trimmed.empty() || trimmed[0] == '#') {
+			continue;
+		}
+
+		std::istringstream line_stream(trimmed);
+		std::string prefix;
+		line_stream >> prefix;
+
+		if (prefix == "newmtl") {
+			line_stream >> current_material_name;
+			if (!current_material_name.empty()) {
+				materials.try_emplace(current_material_name, obj_material{});
+			}
+			continue;
+		}
+
+		if (prefix == "Kd" && !current_material_name.empty()) {
+			std::array<float, 3> diffuse_color{};
+			line_stream >> diffuse_color[0] >> diffuse_color[1] >> diffuse_color[2];
+			if (line_stream) {
+				auto& material = materials[current_material_name];
+				material.diffuse_color = normalize_color(diffuse_color);
+				material.has_diffuse_color = true;
+			}
+		}
+	}
+
+	return materials;
+}
+
+auto normalize_index(int32_t index, size_t count) -> size_t {
+	if (index > 0) {
+		return static_cast<size_t>(index - 1);
+	}
+	if (index < 0) {
+		return static_cast<size_t>(static_cast<int32_t>(count) + index);
+	}
+
+	throw std::runtime_error("OBJ index 0 is invalid.");
+}
+
+auto parse_obj_face_vertex(std::string const& token) -> obj_face_vertex {
+	obj_face_vertex result;
+	std::array<std::string, 3> parts{};
+	size_t part_index = 0;
+	size_t start = 0;
+
+	for (size_t index{}; index <= token.size() && part_index < parts.size(); ++index) {
+		if (index == token.size() || token[index] == '/') {
+			parts[part_index++] = token.substr(start, index - start);
+			start = index + 1;
+		}
+	}
+
+	if (!parts[0].empty()) {
+		result.position_index = std::stoi(parts[0]);
+		if (part_index >= 3 && !parts[2].empty()) {
+			result.normal_index = std::stoi(parts[2]);
+		}
+	}
+
+	return result;
+}
+
+auto compute_face_normal(
+	std::array<float, 3> const& a,
+	std::array<float, 3> const& b,
+	std::array<float, 3> const& c) -> std::array<float, 3> {
+	return stl_detail::normalize_normal({((b[1] - a[1]) * (c[2] - a[2])) - ((b[2] - a[2]) * (c[1] - a[1])),
+										 ((b[2] - a[2]) * (c[0] - a[0])) - ((b[0] - a[0]) * (c[2] - a[2])),
+										 ((b[0] - a[0]) * (c[1] - a[1])) - ((b[1] - a[1]) * (c[0] - a[0]))});
+}
+
+void append_model_vertex(model_data& model, std::array<float, 3> const& position, std::array<float, 3> const& color, std::array<float, 3> const& normal) {
+	model.vertices.push_back(point_vertex{
+		.position = position,
+		.color = normalize_color(color),
+		.normal = stl_detail::normalize_normal(normal)});
+	stl_detail::update_bounds(model.bounds, position);
+}
+
+auto build_model_from_triangles(
+	std::vector<std::array<float, 3>> const& positions,
+	std::vector<std::optional<std::array<float, 3>>> const& position_colors,
+	std::vector<std::array<float, 3>> const& normals,
+	std::vector<obj_triangle> const& triangles,
+	model_representation representation,
+	std::array<float, 3> const& color) -> model_data {
+	auto model = model_data{.bounds = stl_detail::default_bounds()};
+	if (representation == model_representation::mesh) {
+		model.vertices.reserve(triangles.size() * 3);
+		std::unordered_map<stl_detail::point_position_key, stl_detail::accumulated_normal, stl_detail::point_position_key_hash> accumulated_normals;
+		accumulated_normals.reserve(triangles.size() * 3);
+
+		for (auto const& triangle : triangles) {
+			auto const a_index = normalize_index(triangle.vertices[0].position_index, positions.size());
+			auto const b_index = normalize_index(triangle.vertices[1].position_index, positions.size());
+			auto const c_index = normalize_index(triangle.vertices[2].position_index, positions.size());
+			auto const& a = positions[a_index];
+			auto const& b = positions[b_index];
+			auto const& c = positions[c_index];
+			auto const face_normal = (triangle.vertices[0].normal_index != 0 && triangle.vertices[1].normal_index != 0 && triangle.vertices[2].normal_index != 0)
+										 ? stl_detail::normalize_normal(normals[normalize_index(triangle.vertices[0].normal_index, normals.size())])
+										 : compute_face_normal(a, b, c);
+			auto const fallback_color = triangle.has_color ? triangle.color : color;
+			auto const a_color = position_colors[a_index].value_or(fallback_color);
+			auto const b_color = position_colors[b_index].value_or(fallback_color);
+			auto const c_color = position_colors[c_index].value_or(fallback_color);
+
+			append_model_vertex(model, a, a_color, face_normal);
+			append_model_vertex(model, b, b_color, face_normal);
+			append_model_vertex(model, c, c_color, face_normal);
+			stl_detail::accumulate_vertex_normal(accumulated_normals, a, face_normal);
+			stl_detail::accumulate_vertex_normal(accumulated_normals, b, face_normal);
+			stl_detail::accumulate_vertex_normal(accumulated_normals, c, face_normal);
+		}
+
+		stl_detail::apply_smoothed_normals(model, accumulated_normals);
+		return model;
+	}
+
+	std::unordered_set<stl_detail::point_position_key, stl_detail::point_position_key_hash> unique_positions;
+	unique_positions.reserve(triangles.size() * 3);
+	for (auto const& triangle : triangles) {
+		for (auto const& face_vertex : triangle.vertices) {
+			auto const& position = positions[normalize_index(face_vertex.position_index, positions.size())];
+			auto const position_index = normalize_index(face_vertex.position_index, positions.size());
+			auto normal = std::array<float, 3>{0.0f, 0.0f, 1.0f};
+			if (face_vertex.normal_index != 0) {
+				normal = normals[normalize_index(face_vertex.normal_index, normals.size())];
+			}
+			auto const fallback_color = triangle.has_color ? triangle.color : color;
+			auto const vertex_color = position_colors[position_index].value_or(fallback_color);
+			stl_detail::append_unique_point(model, unique_positions, position, vertex_color, normal);
+		}
+	}
+
+	return model;
+}
+
+auto load_obj_model(std::filesystem::path const& path, model_representation representation, std::array<float, 3> const& color) -> model_data {
+	std::ifstream stream(path);
+	if (!stream.is_open()) {
+		throw std::runtime_error("Failed to open OBJ file: " + path.string());
+	}
+
+	std::vector<std::array<float, 3>> positions;
+	std::vector<std::optional<std::array<float, 3>>> position_colors;
+	std::vector<std::array<float, 3>> normals;
+	std::vector<obj_triangle> triangles;
+	std::unordered_map<std::string, obj_material> materials;
+	std::string current_material_name;
+	std::string line;
+
+	while (std::getline(stream, line)) {
+		auto const trimmed = trim_ascii(line);
+		if (trimmed.empty() || trimmed[0] == '#') {
+			continue;
+		}
+
+		std::istringstream line_stream(trimmed);
+		std::string prefix;
+		line_stream >> prefix;
+
+		if (prefix == "v") {
+			std::array<float, 3> position{};
+			line_stream >> position[0] >> position[1] >> position[2];
+			positions.push_back(position);
+			std::array<float, 3> vertex_color{};
+			if (line_stream >> vertex_color[0] >> vertex_color[1] >> vertex_color[2]) {
+				position_colors.push_back(normalize_color(vertex_color));
+			} else {
+				position_colors.push_back(std::nullopt);
+			}
+		} else if (prefix == "vn") {
+			std::array<float, 3> normal{};
+			line_stream >> normal[0] >> normal[1] >> normal[2];
+			normals.push_back(stl_detail::normalize_normal(normal));
+		} else if (prefix == "mtllib") {
+			std::string material_library_name;
+			std::getline(line_stream >> std::ws, material_library_name);
+			auto const material_entries = parse_obj_material_library(path, material_library_name);
+			materials.insert(material_entries.begin(), material_entries.end());
+		} else if (prefix == "usemtl") {
+			line_stream >> current_material_name;
+		} else if (prefix == "f") {
+			std::vector<obj_face_vertex> face_vertices;
+			std::string vertex_token;
+			while (line_stream >> vertex_token) {
+				face_vertices.push_back(parse_obj_face_vertex(vertex_token));
+			}
+
+			if (face_vertices.size() < 3) {
+				continue;
+			}
+
+			for (size_t index = 1; index + 1 < face_vertices.size(); ++index) {
+				auto triangle = obj_triangle{.vertices = {face_vertices[0], face_vertices[index], face_vertices[index + 1]}};
+				auto const material_iterator = materials.find(current_material_name);
+				if (material_iterator != materials.end() && material_iterator->second.has_diffuse_color) {
+					triangle.color = material_iterator->second.diffuse_color;
+					triangle.has_color = true;
+				}
+				triangles.push_back(triangle);
+			}
+		}
+	}
+
+	if (positions.empty() || triangles.empty()) {
+		throw std::runtime_error("OBJ file does not contain triangle data: " + path.string());
+	}
+
+	return build_model_from_triangles(positions, position_colors, normals, triangles, representation, color);
+}
+
+struct ply_header {
+	bool ascii = false;
+	size_t vertex_count = 0;
+	size_t face_count = 0;
+	bool has_normals = false;
+	bool has_faces = false;
+	std::vector<std::string> vertex_properties;
+};
+
+auto parse_ply_header(std::istream& stream, std::filesystem::path const& path) -> ply_header {
+	ply_header header;
+	std::string line;
+	bool in_vertex_element = false;
+
+	if (!std::getline(stream, line) || trim_ascii(line) != "ply") {
+		throw std::runtime_error("Invalid PLY header: " + path.string());
+	}
+
+	while (std::getline(stream, line)) {
+		auto const trimmed = trim_ascii(line);
+		if (trimmed == "end_header") {
+			return header;
+		}
+
+		std::istringstream line_stream(trimmed);
+		std::string prefix;
+		line_stream >> prefix;
+		if (prefix == "format") {
+			std::string format_type;
+			line_stream >> format_type;
+			header.ascii = format_type == "ascii";
+		} else if (prefix == "element") {
+			std::string element_name;
+			size_t count = 0;
+			line_stream >> element_name >> count;
+			in_vertex_element = element_name == "vertex";
+			if (element_name == "vertex") {
+				header.vertex_count = count;
+			} else if (element_name == "face") {
+				header.face_count = count;
+				header.has_faces = count > 0;
+			}
+		} else if (prefix == "property" && in_vertex_element) {
+			std::string property_type;
+			std::string property_name;
+			line_stream >> property_type >> property_name;
+			header.vertex_properties.push_back(property_name);
+			header.has_normals = header.has_normals || property_name == "nx" || property_name == "ny" || property_name == "nz";
+		}
+	}
+
+	throw std::runtime_error("PLY header is incomplete: " + path.string());
+}
+
+auto property_index(std::vector<std::string> const& properties, std::string_view name) -> std::optional<size_t> {
+	for (size_t index{}; index < properties.size(); ++index) {
+		if (properties[index] == name) {
+			return index;
+		}
+	}
+
+	return std::nullopt;
+}
+
+auto load_ply_model(std::filesystem::path const& path, model_representation representation, std::array<float, 3> const& color) -> model_data {
+	std::ifstream stream(path);
+	if (!stream.is_open()) {
+		throw std::runtime_error("Failed to open PLY file: " + path.string());
+	}
+
+	auto const header = parse_ply_header(stream, path);
+	if (!header.ascii) {
+		throw std::runtime_error("Only ASCII PLY is supported: " + path.string());
+	}
+
+	auto const x_index = property_index(header.vertex_properties, "x");
+	auto const y_index = property_index(header.vertex_properties, "y");
+	auto const z_index = property_index(header.vertex_properties, "z");
+	if (!x_index || !y_index || !z_index) {
+		throw std::runtime_error("PLY vertex positions are missing: " + path.string());
+	}
+
+	auto const nx_index = property_index(header.vertex_properties, "nx");
+	auto const ny_index = property_index(header.vertex_properties, "ny");
+	auto const nz_index = property_index(header.vertex_properties, "nz");
+	auto red_index = property_index(header.vertex_properties, "red");
+	if (!red_index) {
+		red_index = property_index(header.vertex_properties, "r");
+	}
+	auto green_index = property_index(header.vertex_properties, "green");
+	if (!green_index) {
+		green_index = property_index(header.vertex_properties, "g");
+	}
+	auto blue_index = property_index(header.vertex_properties, "blue");
+	if (!blue_index) {
+		blue_index = property_index(header.vertex_properties, "b");
+	}
+
+	std::vector<std::array<float, 3>> positions;
+	positions.reserve(header.vertex_count);
+	std::vector<std::array<float, 3>> normals;
+	normals.reserve(header.vertex_count);
+	std::vector<std::optional<std::array<float, 3>>> colors;
+	colors.reserve(header.vertex_count);
+
+	std::string line;
+	for (size_t vertex_index{}; vertex_index < header.vertex_count; ++vertex_index) {
+		if (!std::getline(stream, line)) {
+			throw std::runtime_error("PLY vertex data is incomplete: " + path.string());
+		}
+
+		std::istringstream line_stream(line);
+		std::vector<float> values(header.vertex_properties.size(), 0.0f);
+		for (size_t property = 0; property < header.vertex_properties.size(); ++property) {
+			line_stream >> values[property];
+		}
+
+		positions.push_back({values[*x_index], values[*y_index], values[*z_index]});
+		if (nx_index && ny_index && nz_index) {
+			normals.push_back(stl_detail::normalize_normal({values[*nx_index], values[*ny_index], values[*nz_index]}));
+		} else {
+			normals.push_back({0.0f, 0.0f, 1.0f});
+		}
+		if (red_index && green_index && blue_index) {
+			colors.push_back(normalize_color({values[*red_index], values[*green_index], values[*blue_index]}));
+		} else {
+			colors.push_back(std::nullopt);
+		}
+	}
+
+	if (representation == model_representation::point_cloud || !header.has_faces) {
+		auto model = model_data{.bounds = stl_detail::default_bounds()};
+		std::unordered_set<stl_detail::point_position_key, stl_detail::point_position_key_hash> unique_positions;
+		unique_positions.reserve(positions.size());
+		for (size_t vertex_index{}; vertex_index < positions.size(); ++vertex_index) {
+			stl_detail::append_unique_point(model, unique_positions, positions[vertex_index], colors[vertex_index].value_or(color), normals[vertex_index]);
+		}
+		return model;
+	}
+
+	std::vector<obj_triangle> triangles;
+	triangles.reserve(header.face_count);
+	for (size_t face_index{}; face_index < header.face_count; ++face_index) {
+		if (!std::getline(stream, line)) {
+			throw std::runtime_error("PLY face data is incomplete: " + path.string());
+		}
+
+		std::istringstream line_stream(line);
+		size_t vertex_count = 0;
+		line_stream >> vertex_count;
+		if (vertex_count < 3) {
+			continue;
+		}
+
+		std::vector<int32_t> indices(vertex_count, 0);
+		for (size_t index{}; index < vertex_count; ++index) {
+			line_stream >> indices[index];
+		}
+
+		for (size_t index = 1; index + 1 < indices.size(); ++index) {
+			triangles.push_back(obj_triangle{
+				.vertices = {
+					obj_face_vertex{.position_index = indices[0] + 1, .normal_index = 0},
+					obj_face_vertex{.position_index = indices[index] + 1, .normal_index = 0},
+					obj_face_vertex{.position_index = indices[index + 1] + 1, .normal_index = 0}}});
+		}
+	}
+
+	return build_model_from_triangles(positions, colors, normals, triangles, representation, color);
+}
+} // namespace loader_detail
+
+auto load_model(
+	std::filesystem::path const& path,
+	model_representation representation,
+	point const& color) -> model_data {
+	if (!std::filesystem::exists(path)) {
+		throw std::runtime_error("Model file does not exist: " + path.string());
+	}
+
+	auto extension = path.extension().string();
+	std::ranges::transform(extension, extension.begin(), [](unsigned char character) {
+		return static_cast<char>(std::tolower(character));
+	});
+
+	if (extension == ".stl") {
+		return representation == model_representation::point_cloud
+				   ? load_stl_point_cloud(path, color)
+				   : load_stl_mesh(path, color);
+	}
+	if (extension == ".obj") {
+		return loader_detail::load_obj_model(path, representation, color);
+	}
+	if (extension == ".ply") {
+		return loader_detail::load_ply_model(path, representation, color);
+	}
+
+	throw std::runtime_error("Unsupported model file format: " + path.string());
 }
 } // namespace modern_vulkan
 
@@ -1369,18 +1899,18 @@ auto rotation_y_matrix(float radians) -> std::array<float, 16> {
 }
 
 auto make_point_cloud_mvp(
-	point_cloud_bounds const& bounds,
+	modern_vulkan::bounds const& model_bounds,
 	float pitch_radians,
 	float yaw_radians,
 	float zoom_factor,
 	float pan_x,
 	float pan_y) -> std::array<float, 16> {
-	auto const center_x = (bounds.min[0] + bounds.max[0]) * 0.5f;
-	auto const center_y = (bounds.min[1] + bounds.max[1]) * 0.5f;
-	auto const center_z = (bounds.min[2] + bounds.max[2]) * 0.5f;
-	auto const extent_x = bounds.max[0] - bounds.min[0];
-	auto const extent_y = bounds.max[1] - bounds.min[1];
-	auto const extent_z = bounds.max[2] - bounds.min[2];
+	auto const center_x = (model_bounds.min[0] + model_bounds.max[0]) * 0.5f;
+	auto const center_y = (model_bounds.min[1] + model_bounds.max[1]) * 0.5f;
+	auto const center_z = (model_bounds.min[2] + model_bounds.max[2]) * 0.5f;
+	auto const extent_x = model_bounds.max[0] - model_bounds.min[0];
+	auto const extent_y = model_bounds.max[1] - model_bounds.min[1];
+	auto const extent_z = model_bounds.max[2] - model_bounds.min[2];
 	auto const max_extent = std::max({extent_x, extent_y, extent_z, 1.0e-4f});
 	auto const xy_scale = (1.6f * zoom_factor) / max_extent;
 	auto const depth_scale = (0.5f * zoom_factor) / max_extent;
@@ -1399,7 +1929,7 @@ struct interactive_renderer_private {
 		logical_device const& logical_device,
 		swapchain const& swapchain,
 		std::span<point_vertex const> vertices,
-		point_cloud_bounds const& bounds,
+		modern_vulkan::bounds const& model_bounds,
 		primitive_topology topology,
 		bool lighting_enabled_default)
 		: logical_device_(static_cast<VkDevice>(logical_device.handle())),
@@ -1409,7 +1939,7 @@ struct interactive_renderer_private {
 		  shader_paths_(renderer_detail::ensure_compiled_point_cloud_shaders()),
 		  solid_pipeline_(logical_device, swapchain, shader_paths_.vertex_path, shader_paths_.fragment_path, topology, polygon_mode::solid),
 		  point_count_(static_cast<uint32_t>(vertices.size())),
-		  bounds_(bounds),
+		  bounds_(model_bounds),
 		  topology_(topology),
 		  lighting_enabled_(lighting_enabled_default),
 		  wireframe_supported_(topology == primitive_topology::triangle_list && logical_device.bound_physical_device().supports_fill_mode_non_solid()) {
@@ -1621,7 +2151,7 @@ struct interactive_renderer_private {
 		auto const delta_y = y - last_cursor_y_;
 		last_cursor_x_ = x;
 		last_cursor_y_ = y;
-		yaw_radians_ += delta_x * 0.006f;
+		yaw_radians_ -= delta_x * 0.006f;
 		pitch_radians_ = std::clamp(pitch_radians_ + delta_y * 0.006f, -1.5f, 1.5f);
 		update_mvp();
 	}
@@ -1797,7 +2327,7 @@ struct interactive_renderer_private {
 	std::vector<VkSemaphore> render_finished_semaphores_;
 	VkFence in_flight_fence_ = VK_NULL_HANDLE;
 	uint32_t point_count_ = 0;
-	point_cloud_bounds bounds_{};
+	bounds bounds_{};
 	primitive_topology topology_ = primitive_topology::point_list;
 	bool lighting_enabled_ = false;
 	bool wireframe_supported_ = false;
@@ -1820,7 +2350,7 @@ struct point_cloud_renderer_private : interactive_renderer_private {
 	point_cloud_renderer_private(
 		logical_device const& logical_device,
 		swapchain const& swapchain,
-		point_cloud_data const& point_cloud)
+		model_data const& point_cloud)
 		: interactive_renderer_private(
 			  logical_device,
 			  swapchain,
@@ -1835,7 +2365,7 @@ struct mesh_renderer_private : interactive_renderer_private {
 	mesh_renderer_private(
 		logical_device const& logical_device,
 		swapchain const& swapchain,
-		mesh_data const& mesh)
+		model_data const& mesh)
 		: interactive_renderer_private(
 			  logical_device,
 			  swapchain,
@@ -1849,7 +2379,7 @@ struct mesh_renderer_private : interactive_renderer_private {
 point_cloud_renderer::point_cloud_renderer(
 	logical_device const& logical_device,
 	swapchain const& swapchain,
-	point_cloud_data const& point_cloud)
+	model_data const& point_cloud)
 	: d(new point_cloud_renderer_private(logical_device, swapchain, point_cloud)) {
 }
 
@@ -1936,7 +2466,7 @@ void point_cloud_renderer::draw_frame() const {
 mesh_renderer::mesh_renderer(
 	logical_device const& logical_device,
 	swapchain const& swapchain,
-	mesh_data const& mesh)
+	model_data const& mesh)
 	: d(new mesh_renderer_private(logical_device, swapchain, mesh)) {
 }
 

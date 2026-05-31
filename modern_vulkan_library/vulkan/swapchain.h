@@ -11,7 +11,7 @@ struct surface;
 
 struct swapchain_private;
 struct MODERN_VULKAN_LIBRARY_EXPORT swapchain {
-	swapchain(logical_device const& logical_device, surface const& surface, rect extent);
+   swapchain(logical_device const& logical_device, surface const& surface, rect extent, void *old_swapchain = nullptr);
 	~swapchain();
 
 	swapchain(swapchain&& other) noexcept;

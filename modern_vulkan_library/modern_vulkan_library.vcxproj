@@ -30,9 +30,10 @@
     <ClInclude Include="vulkan\extensions.h" />
     <ClInclude Include="vulkan\instance.h" />
     <ClInclude Include="vulkan\mesh_renderer.h" />
+    <ClInclude Include="vulkan\model_loader.h" />
+    <ClInclude Include="vulkan\point_cloud.h" />
     <ClInclude Include="vulkan\point_cloud_renderer.h" />
     <ClInclude Include="vulkan\stl_mesh.h" />
-    <ClInclude Include="vulkan\stl_point_cloud.h" />
     <ClInclude Include="vulkan\\logical_device.h" />
     <ClInclude Include="vulkan\\point_cloud_pipeline.h" />
     <ClInclude Include="vulkan\physical_device.h" />

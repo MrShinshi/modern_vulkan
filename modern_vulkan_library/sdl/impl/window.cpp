@@ -36,6 +36,22 @@ auto window::handle() const -> void * {
 	return d->window;
 }
 
+auto window::rect() const -> modern_vulkan::rect {
+	if (d == nullptr || d->window == nullptr) {
+		return {};
+	}
+
+	int width = 0;
+	int height = 0;
+	if (!SDL_GetWindowSize(d->window, &width, &height)) {
+		throw std::runtime_error("SDL_GetWindowSize failed: " + std::string(SDL_GetError()));
+	}
+
+	return modern_vulkan::rect{
+		.w = static_cast<std::size_t>(std::max(width, 0)),
+		.h = static_cast<std::size_t>(std::max(height, 0))};
+}
+
 void window::title(std::string_view value) const {
 	if (d == nullptr || d->window == nullptr) {
 		return;

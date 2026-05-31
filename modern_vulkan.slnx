@@ -6,6 +6,7 @@
   <Folder Name="/解决方案项/">
     <File Path=".clang-format" />
     <File Path=".gitattributes" />
+    <File Path=".github/copilot-instructions.md" />
     <File Path=".gitignore" />
     <File Path="README.md" />
   </Folder>

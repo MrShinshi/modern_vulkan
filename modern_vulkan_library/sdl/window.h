@@ -20,6 +20,7 @@ struct MODERN_VULKAN_LIBRARY_EXPORT window {
 	window& operator=(window const&) = delete;
 
 	auto handle() const -> void *;
+   auto rect() const -> modern_vulkan::rect;
 	void title(std::string_view value) const;
 
 private:

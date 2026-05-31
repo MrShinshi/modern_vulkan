@@ -248,7 +248,7 @@ auto simple_direct_media_layer::execute() -> int {
 }
 
 auto simple_direct_media_layer::execute(std::function<void()> const& frame_action) -> int {
-    return execute(frame_action, input_callbacks{});
+	return execute(frame_action, input_callbacks{});
 }
 
 auto simple_direct_media_layer::execute(std::function<void()> const& frame_action, std::function<void(input_event const&)> const& event_action) -> int {
@@ -277,127 +277,127 @@ auto simple_direct_media_layer::execute(std::function<void()> const& frame_actio
 				break;
 			}
 
-            switch (event.type) {
-           case SDL_EVENT_MOUSE_BUTTON_DOWN:
+			switch (event.type) {
+			case SDL_EVENT_MOUSE_BUTTON_DOWN:
 				dispatch_input_event(event_callbacks, input_event{
-					.type = input_event_type::pressed,
-					.device = input_device_type::mouse,
-					.button = parse_mouse_button(event.button.button),
-                    .mouse_axis = mouse_axis::none,
-					.key = '\0',
-					.position = modern_vulkan::basic_position<float>{.x = event.button.x, .y = event.button.y},
-					.wheel_delta_y = 0.0f,
-					.gamepad_index = -1,
-                    .gamepad_button = gamepad_button::none,
-					.gamepad_axis = gamepad_axis::none,
-					.gamepad_axis_value = 0.0f});
+														  .type = input_event_type::pressed,
+														  .device = input_device_type::mouse,
+														  .button = parse_mouse_button(event.button.button),
+														  .mouse_axis = mouse_axis::none,
+														  .key = '\0',
+														  .position = modern_vulkan::basic_position<float>{.x = event.button.x, .y = event.button.y},
+														  .wheel_delta_y = 0.0f,
+														  .gamepad_index = -1,
+														  .gamepad_button = gamepad_button::none,
+														  .gamepad_axis = gamepad_axis::none,
+														  .gamepad_axis_value = 0.0f});
 				break;
 
 			case SDL_EVENT_MOUSE_BUTTON_UP:
-               dispatch_input_event(event_callbacks, input_event{
-					.type = input_event_type::released,
-					.device = input_device_type::mouse,
-					.button = parse_mouse_button(event.button.button),
-                    .mouse_axis = mouse_axis::none,
-					.key = '\0',
-					.position = modern_vulkan::basic_position<float>{.x = event.button.x, .y = event.button.y},
-					.wheel_delta_y = 0.0f,
-					.gamepad_index = -1,
-                    .gamepad_button = gamepad_button::none,
-					.gamepad_axis = gamepad_axis::none,
-					.gamepad_axis_value = 0.0f});
+				dispatch_input_event(event_callbacks, input_event{
+														  .type = input_event_type::released,
+														  .device = input_device_type::mouse,
+														  .button = parse_mouse_button(event.button.button),
+														  .mouse_axis = mouse_axis::none,
+														  .key = '\0',
+														  .position = modern_vulkan::basic_position<float>{.x = event.button.x, .y = event.button.y},
+														  .wheel_delta_y = 0.0f,
+														  .gamepad_index = -1,
+														  .gamepad_button = gamepad_button::none,
+														  .gamepad_axis = gamepad_axis::none,
+														  .gamepad_axis_value = 0.0f});
 				break;
 
 			case SDL_EVENT_MOUSE_MOTION:
-               dispatch_input_event(event_callbacks, input_event{
-					.type = input_event_type::motion,
-					.device = input_device_type::mouse,
-					.button = mouse_button::none,
-                    .mouse_axis = mouse_axis::none,
-					.key = '\0',
-					.position = modern_vulkan::basic_position<float>{.x = event.motion.x, .y = event.motion.y},
-					.wheel_delta_y = 0.0f,
-					.gamepad_index = -1,
-                    .gamepad_button = gamepad_button::none,
-					.gamepad_axis = gamepad_axis::none,
-					.gamepad_axis_value = 0.0f});
+				dispatch_input_event(event_callbacks, input_event{
+														  .type = input_event_type::motion,
+														  .device = input_device_type::mouse,
+														  .button = mouse_button::none,
+														  .mouse_axis = mouse_axis::none,
+														  .key = '\0',
+														  .position = modern_vulkan::basic_position<float>{.x = event.motion.x, .y = event.motion.y},
+														  .wheel_delta_y = 0.0f,
+														  .gamepad_index = -1,
+														  .gamepad_button = gamepad_button::none,
+														  .gamepad_axis = gamepad_axis::none,
+														  .gamepad_axis_value = 0.0f});
 				break;
 
 			case SDL_EVENT_MOUSE_WHEEL:
-               dispatch_input_event(event_callbacks, input_event{
-					.type = input_event_type::axis,
-					.device = input_device_type::mouse,
-					.button = mouse_button::none,
-                    .mouse_axis = mouse_axis::wheel_vertical,
-					.key = '\0',
-					.position = modern_vulkan::basic_position<float>{.x = event.wheel.mouse_x, .y = event.wheel.mouse_y},
-					.wheel_delta_y = event.wheel.y,
-					.gamepad_index = -1,
-                    .gamepad_button = gamepad_button::none,
-					.gamepad_axis = gamepad_axis::none,
-					.gamepad_axis_value = 0.0f});
+				dispatch_input_event(event_callbacks, input_event{
+														  .type = input_event_type::axis,
+														  .device = input_device_type::mouse,
+														  .button = mouse_button::none,
+														  .mouse_axis = mouse_axis::wheel_vertical,
+														  .key = '\0',
+														  .position = modern_vulkan::basic_position<float>{.x = event.wheel.mouse_x, .y = event.wheel.mouse_y},
+														  .wheel_delta_y = event.wheel.y,
+														  .gamepad_index = -1,
+														  .gamepad_button = gamepad_button::none,
+														  .gamepad_axis = gamepad_axis::none,
+														  .gamepad_axis_value = 0.0f});
 				break;
 
 			case SDL_EVENT_KEY_DOWN:
-               dispatch_input_event(event_callbacks, input_event{
-					.type = input_event_type::key_down,
-					.device = input_device_type::keyboard,
-					.button = mouse_button::none,
-                 .mouse_axis = mouse_axis::none,
-					.key = (event.key.key >= 0 && event.key.key <= 127)
-						? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key.key)))
-						: '\0',
-					.position = modern_vulkan::basic_position<float>{.x = 0.0f, .y = 0.0f},
-					.wheel_delta_y = 0.0f,
-					.gamepad_index = -1,
-                    .gamepad_button = gamepad_button::none,
-					.gamepad_axis = gamepad_axis::none,
-					.gamepad_axis_value = 0.0f});
+				dispatch_input_event(event_callbacks, input_event{
+														  .type = input_event_type::key_down,
+														  .device = input_device_type::keyboard,
+														  .button = mouse_button::none,
+														  .mouse_axis = mouse_axis::none,
+														  .key = (event.key.key >= 0 && event.key.key <= 127)
+																	 ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key.key)))
+																	 : '\0',
+														  .position = modern_vulkan::basic_position<float>{.x = 0.0f, .y = 0.0f},
+														  .wheel_delta_y = 0.0f,
+														  .gamepad_index = -1,
+														  .gamepad_button = gamepad_button::none,
+														  .gamepad_axis = gamepad_axis::none,
+														  .gamepad_axis_value = 0.0f});
 				break;
 
 			case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
 				dispatch_input_event(event_callbacks, input_event{
-					.type = input_event_type::pressed,
-					.device = input_device_type::gamepad,
-					.button = mouse_button::none,
-					.mouse_axis = mouse_axis::none,
-					.key = '\0',
-					.position = modern_vulkan::basic_position<float>{.x = 0.0f, .y = 0.0f},
-					.wheel_delta_y = 0.0f,
-					.gamepad_index = static_cast<int32_t>(event.gbutton.which),
-					.gamepad_button = parse_gamepad_button(event.gbutton.button),
-					.gamepad_axis = gamepad_axis::none,
-					.gamepad_axis_value = 0.0f});
+														  .type = input_event_type::pressed,
+														  .device = input_device_type::gamepad,
+														  .button = mouse_button::none,
+														  .mouse_axis = mouse_axis::none,
+														  .key = '\0',
+														  .position = modern_vulkan::basic_position<float>{.x = 0.0f, .y = 0.0f},
+														  .wheel_delta_y = 0.0f,
+														  .gamepad_index = static_cast<int32_t>(event.gbutton.which),
+														  .gamepad_button = parse_gamepad_button(event.gbutton.button),
+														  .gamepad_axis = gamepad_axis::none,
+														  .gamepad_axis_value = 0.0f});
 				break;
 
 			case SDL_EVENT_GAMEPAD_BUTTON_UP:
 				dispatch_input_event(event_callbacks, input_event{
-					.type = input_event_type::released,
-					.device = input_device_type::gamepad,
-					.button = mouse_button::none,
-					.mouse_axis = mouse_axis::none,
-					.key = '\0',
-					.position = modern_vulkan::basic_position<float>{.x = 0.0f, .y = 0.0f},
-					.wheel_delta_y = 0.0f,
-					.gamepad_index = static_cast<int32_t>(event.gbutton.which),
-					.gamepad_button = parse_gamepad_button(event.gbutton.button),
-					.gamepad_axis = gamepad_axis::none,
-					.gamepad_axis_value = 0.0f});
+														  .type = input_event_type::released,
+														  .device = input_device_type::gamepad,
+														  .button = mouse_button::none,
+														  .mouse_axis = mouse_axis::none,
+														  .key = '\0',
+														  .position = modern_vulkan::basic_position<float>{.x = 0.0f, .y = 0.0f},
+														  .wheel_delta_y = 0.0f,
+														  .gamepad_index = static_cast<int32_t>(event.gbutton.which),
+														  .gamepad_button = parse_gamepad_button(event.gbutton.button),
+														  .gamepad_axis = gamepad_axis::none,
+														  .gamepad_axis_value = 0.0f});
 				break;
 
 			case SDL_EVENT_GAMEPAD_AXIS_MOTION:
 				dispatch_input_event(event_callbacks, input_event{
-					.type = input_event_type::axis,
-					.device = input_device_type::gamepad,
-					.button = mouse_button::none,
-					.mouse_axis = mouse_axis::none,
-					.key = '\0',
-					.position = modern_vulkan::basic_position<float>{.x = 0.0f, .y = 0.0f},
-					.wheel_delta_y = 0.0f,
-					.gamepad_index = static_cast<int32_t>(event.gaxis.which),
-					.gamepad_button = gamepad_button::none,
-					.gamepad_axis = parse_gamepad_axis(event.gaxis.axis),
-					.gamepad_axis_value = std::clamp(static_cast<float>(event.gaxis.value) / 32767.0f, -1.0f, 1.0f)});
+														  .type = input_event_type::axis,
+														  .device = input_device_type::gamepad,
+														  .button = mouse_button::none,
+														  .mouse_axis = mouse_axis::none,
+														  .key = '\0',
+														  .position = modern_vulkan::basic_position<float>{.x = 0.0f, .y = 0.0f},
+														  .wheel_delta_y = 0.0f,
+														  .gamepad_index = static_cast<int32_t>(event.gaxis.which),
+														  .gamepad_button = gamepad_button::none,
+														  .gamepad_axis = parse_gamepad_axis(event.gaxis.axis),
+														  .gamepad_axis_value = std::clamp(static_cast<float>(event.gaxis.value) / 32767.0f, -1.0f, 1.0f)});
 				break;
 
 			default:
@@ -407,7 +407,7 @@ auto simple_direct_media_layer::execute(std::function<void()> const& frame_actio
 
 		frame_action();
 
-		SDL_Delay(10);
+		// SDL_Delay(10);
 	}
 
 	return EXIT_SUCCESS;

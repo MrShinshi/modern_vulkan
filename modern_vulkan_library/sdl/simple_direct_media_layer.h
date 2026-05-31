@@ -83,12 +83,12 @@ struct input_event {
 	input_event_type type;
 	input_device_type device;
 	mouse_button button;
-   mouse_axis mouse_axis;
+	mouse_axis mouse_axis;
 	char key;
-    modern_vulkan::basic_position<float> position;
+	modern_vulkan::basic_position<float> position;
 	float wheel_delta_y;
 	int32_t gamepad_index;
- gamepad_button gamepad_button;
+	gamepad_button gamepad_button;
 	gamepad_axis gamepad_axis;
 	float gamepad_axis_value;
 };
