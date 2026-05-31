@@ -18,6 +18,40 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="common\modern_vulkan_exception.h" />
+    <ClInclude Include="common\modern_vulkan_library.h" />
+    <ClInclude Include="sdl\impl\properties_private.h" />
+    <ClInclude Include="sdl\impl\window_private.h" />
+    <ClInclude Include="sdl\properties.h" />
+    <ClInclude Include="sdl\simple_direct_media_layer.h" />
+    <ClInclude Include="sdl\window.h" />
+    <ClInclude Include="vulkan\device_queue_family.h" />
+    <ClInclude Include="vulkan\extensions.h" />
+    <ClInclude Include="vulkan\instance.h" />
+    <ClInclude Include="vulkan\mesh_renderer.h" />
+    <ClInclude Include="vulkan\point_cloud_renderer.h" />
+    <ClInclude Include="vulkan\stl_mesh.h" />
+    <ClInclude Include="vulkan\stl_point_cloud.h" />
+    <ClInclude Include="vulkan\\logical_device.h" />
+    <ClInclude Include="vulkan\\point_cloud_pipeline.h" />
+    <ClInclude Include="vulkan\physical_device.h" />
+    <ClInclude Include="vulkan\surface.h" />
+    <ClInclude Include="vulkan\swapchain.h" />
+    <ClInclude Include="vulkan\swapchain_support.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="common\modern_vulkan_exception.cpp" />
+    <ClCompile Include="sdl\impl\properties.cpp" />
+    <ClCompile Include="sdl\impl\simple_direct_media_layer.cpp" />
+    <ClCompile Include="sdl\impl\window.cpp" />
+    <ClCompile Include="vulkan\impl\device_queue_family.cpp" />
+    <ClCompile Include="vulkan\impl\instance.cpp" />
+    <ClCompile Include="vulkan\\impl\\logical_device.cpp" />
+    <ClCompile Include="vulkan\impl\physical_device.cpp" />
+    <ClCompile Include="vulkan\impl\surface.cpp" />
+    <ClCompile Include="vulkan\impl\swapchain.cpp" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>18.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
@@ -113,7 +147,7 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(VULKAN_SDK)\Include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -134,7 +168,7 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(VULKAN_SDK)\Include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -144,22 +178,6 @@
       <AdditionalDependencies>vulkan-1.lib;SDL3.lib;$(CoreLibraryDependencies);%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClInclude Include="instance.h" />
-    <ClInclude Include="modern_vulkan_library.h" />
-    <ClInclude Include="properties.h" />
-    <ClInclude Include="properties_private.h" />
-    <ClInclude Include="simple_direct_media_layer.h" />
-    <ClInclude Include="vulkan_exception.h" />
-    <ClInclude Include="window.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="instance.cpp" />
-    <ClCompile Include="properties.cpp" />
-    <ClCompile Include="simple_direct_media_layer.cpp" />
-    <ClCompile Include="vulkan_exception.cpp" />
-    <ClCompile Include="window.cpp" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

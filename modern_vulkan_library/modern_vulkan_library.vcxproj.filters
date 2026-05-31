@@ -13,44 +13,116 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="头文件\vulkan">
+      <UniqueIdentifier>{3473e3fc-7875-45a9-9ecc-98a0632d9b70}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\vulkan">
+      <UniqueIdentifier>{435de587-e622-455f-ba42-6c4c86101325}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\sdl">
+      <UniqueIdentifier>{04bbfb88-1d84-465f-abeb-3df0cb2c73ff}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\sdl">
+      <UniqueIdentifier>{862172e5-f0cb-4555-97f0-8b2a2b6de192}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="头文件\common">
+      <UniqueIdentifier>{f53ba4ea-87dc-4278-9a80-c4a527a69c69}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\common">
+      <UniqueIdentifier>{795abd46-9c49-4fb4-b675-593993f40db2}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="modern_vulkan_library.h">
+    <ClInclude Include="sdl\properties.h">
+      <Filter>头文件\sdl</Filter>
+    </ClInclude>
+    <ClInclude Include="sdl\simple_direct_media_layer.h">
+      <Filter>头文件\sdl</Filter>
+    </ClInclude>
+    <ClInclude Include="sdl\window.h">
+      <Filter>头文件\sdl</Filter>
+    </ClInclude>
+    <ClInclude Include="vulkan\instance.h">
+      <Filter>头文件\vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="vulkan\surface.h">
+      <Filter>头文件\vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="sdl\impl\properties_private.h">
+      <Filter>源文件\sdl</Filter>
+    </ClInclude>
+    <ClInclude Include="sdl\impl\window_private.h">
+      <Filter>源文件\sdl</Filter>
+    </ClInclude>
+    <ClInclude Include="common\modern_vulkan_exception.h">
+      <Filter>头文件\common</Filter>
+    </ClInclude>
+    <ClInclude Include="common\modern_vulkan_library.h">
+      <Filter>头文件\common</Filter>
+    </ClInclude>
+    <ClInclude Include="vulkan\physical_device.h">
+      <Filter>头文件\vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="vulkan\device_queue_family.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="simple_direct_media_layer.h">
+    <ClInclude Include="vulkan\extensions.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="instance.h">
+    <ClInclude Include="vulkan\swapchain.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="window.h">
+    <ClInclude Include="vulkan\swapchain_support.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="properties.h">
+    <ClInclude Include="vulkan\\logical_device.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="properties_private.h">
+    <ClInclude Include="vulkan\\point_cloud_pipeline.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="vulkan_exception.h">
+    <ClInclude Include="vulkan\stl_point_cloud.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="vulkan\point_cloud_renderer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="vulkan\stl_mesh.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="vulkan\mesh_renderer.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="simple_direct_media_layer.cpp">
+    <ClCompile Include="sdl\impl\properties.cpp">
+      <Filter>源文件\sdl</Filter>
+    </ClCompile>
+    <ClCompile Include="sdl\impl\simple_direct_media_layer.cpp">
+      <Filter>源文件\sdl</Filter>
+    </ClCompile>
+    <ClCompile Include="sdl\impl\window.cpp">
+      <Filter>源文件\sdl</Filter>
+    </ClCompile>
+    <ClCompile Include="vulkan\impl\instance.cpp">
+      <Filter>源文件\vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="vulkan\impl\surface.cpp">
+      <Filter>源文件\vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="common\modern_vulkan_exception.cpp">
+      <Filter>源文件\common</Filter>
+    </ClCompile>
+    <ClCompile Include="vulkan\impl\physical_device.cpp">
+      <Filter>源文件\vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="vulkan\impl\device_queue_family.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="instance.cpp">
-      <Filter>源文件</Filter>
+    <ClCompile Include="vulkan\impl\swapchain.cpp">
+      <Filter>源文件\vulkan</Filter>
     </ClCompile>
-    <ClCompile Include="window.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="properties.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="vulkan_exception.cpp">
+    <ClCompile Include="vulkan\\impl\\logical_device.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

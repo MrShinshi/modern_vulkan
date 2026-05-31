@@ -13,18 +13,26 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <span>
 #include <exception>
 #include <stacktrace>
 
 namespace modern_vulkan
 {
-struct rect {
-	std::size_t w;
-	std::size_t h;
+template <typename value_type>
+struct basic_rect {
+	value_type w;
+	value_type h;
 };
-struct pos {
-	std::size_t x;
-	std::size_t y;
+
+using rect = basic_rect<std::size_t>;
+
+template <typename value_type>
+struct basic_position {
+	value_type x;
+	value_type y;
 };
+
+using position = basic_position<std::size_t>;
 
 } // namespace modern_vulkan

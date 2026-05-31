@@ -19,4 +19,8 @@
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="shaders\point_cloud.vert" />
+    <None Include="shaders\point_cloud.frag" />
+  </ItemGroup>
 </Project>

@@ -1,15 +1,17 @@
-#include "vulkan_exception.h"
+#include <common/modern_vulkan_exception.h>
 #include <SDL3/SDL.h>
 #include <sstream>
 
-sdl_exception::sdl_exception(
+namespace modern_vulkan::sdl
+{
+exception::exception(
 	std::string&& message,
 	std::stacktrace&& stack)
 	: lib_error(std::move(message)),
 	  sdl_error(SDL_GetError()),
 	  stacktrace(std::move(stack)) {}
-	
-char const *sdl_exception::what() const noexcept {
+
+char const *exception::what() const noexcept {
 	try {
 		constexpr auto reset = "\x1b[0m";
 		constexpr auto bold = "\x1b[1m";
@@ -37,6 +39,7 @@ char const *sdl_exception::what() const noexcept {
 		return what_str.c_str();
 	}
 	catch (...) {
-		return "sdl_exception::what() failed";
+		return "sdl::exception::what() failed";
 	}
+}
 }

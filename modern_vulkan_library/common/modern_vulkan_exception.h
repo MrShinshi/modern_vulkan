@@ -1,14 +1,16 @@
 #pragma once
 #include "modern_vulkan_library.h"
 
-struct sdl_exception 
+namespace modern_vulkan::sdl
+{
+struct exception
 	: public std::exception {
-	sdl_exception(
-		std::string&& message, 
-		std::stacktrace&& stack =  std::stacktrace::current());
+	exception(
+		std::string&& message,
+		std::stacktrace&& stack = std::stacktrace::current());
 
-	auto what() const noexcept 
-		-> char const *	override;
+	auto what() const noexcept
+		-> char const * override;
 
 	std::string const lib_error;
 	std::string const sdl_error;
@@ -16,3 +18,5 @@ struct sdl_exception
 
 	mutable std::string what_str;
 };
+
+}
